@@ -495,15 +495,30 @@ def cmd_np(word, word_eol, userdata) -> int:
                     hexchat.prnt(f"[NP] Token expires in {int(expiry // 60)} minutes")
             else:
                 hexchat.prnt("[NP] Status: Not authenticated")
+            hexchat.prnt(f"[NP] Redirect URI: {state.auth.redirect_uri}")
+            return hexchat.EAT_ALL
+        
+        elif subcommand == "redirect":
+            if len(word) > 2:
+                new_uri = word_eol[2].strip()
+                state.config.set('redirect_uri', new_uri)
+                state.auth.redirect_uri = new_uri
+                hexchat.prnt(f"[NP] Redirect URI set to: {new_uri}")
+                hexchat.prnt("[NP] Run /np reset then /np auth to re-authenticate")
+            else:
+                hexchat.prnt(f"[NP] Current redirect URI: {state.auth.redirect_uri}")
+                hexchat.prnt("[NP] Usage: /np redirect <uri>")
+                hexchat.prnt("[NP] Example: /np redirect https://localhost:8888/callback")
             return hexchat.EAT_ALL
         
         elif subcommand == "help":
             hexchat.prnt("[NP] Spotify Now Playing Commands:")
-            hexchat.prnt("  /np        - Show currently playing track")
-            hexchat.prnt("  /np auth   - Authenticate with Spotify")
-            hexchat.prnt("  /np reset  - Clear stored credentials")
-            hexchat.prnt("  /np status - Show authentication status")
-            hexchat.prnt("  /np help   - Show this help")
+            hexchat.prnt("  /np           - Show currently playing track")
+            hexchat.prnt("  /np auth      - Authenticate with Spotify")
+            hexchat.prnt("  /np reset     - Clear stored credentials")
+            hexchat.prnt("  /np status    - Show authentication status")
+            hexchat.prnt("  /np redirect  - Show/set redirect URI")
+            hexchat.prnt("  /np help      - Show this help")
             return hexchat.EAT_ALL
     
     # Check authentication
@@ -557,6 +572,7 @@ hexchat.hook_command(
          "       /np auth - Authenticate with Spotify\n"
          "       /np reset - Clear stored credentials\n"
          "       /np status - Show authentication status\n"
+         "       /np redirect <uri> - Set redirect URI to match Spotify app\n"
          "       /np help - Show help"
 )
 
