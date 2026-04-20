@@ -102,8 +102,8 @@ def setup_spotify_np():
     print("5. Accept the terms and create the app")
     print("6. Click 'Settings' to find your Client ID and Client Secret")
     print()
-    print("IMPORTANT: You must add http://localhost:8888/callback")
-    print("           as a Redirect URI in your Spotify app settings!")
+    print("IMPORTANT: The Redirect URI you enter in Spotify MUST match exactly!")
+    print("           Default: http://localhost:8888/callback")
     print()
     
     # Get and validate credentials
@@ -127,10 +127,31 @@ def setup_spotify_np():
     print("Step 2: Save Configuration")
     print("-" * 60)
     
+    # Ask about custom redirect URI
+    print("If you used a different Redirect URI in Spotify, enter it now.")
+    print("Otherwise, press Enter to use the default.")
+    print("Default: http://localhost:8888/callback")
+    print()
+    print("NOTE: Spotify allows http://localhost for development apps.")
+    print("      If you used https://, change it to http:// in Spotify settings.")
+    print()
+    custom_redirect = input("Redirect URI (or Enter for default): ").strip()
+    
     # Update config (preserve any existing tokens)
     config_data = existing_config.copy()
     config_data['client_id'] = client_id
     config_data['client_secret'] = client_secret
+    if custom_redirect:
+        if custom_redirect.startswith('https://localhost'):
+            print()
+            print("WARNING: https://localhost requires SSL certificates.")
+            print("         Please use http://localhost instead in Spotify settings.")
+            print()
+        config_data['redirect_uri'] = custom_redirect
+        print(f"  Using redirect URI: {custom_redirect}")
+    elif 'redirect_uri' not in config_data:
+        # Only set default if not already configured
+        pass  # Will use DEFAULT_REDIRECT_URI in the plugin
     
     # Save config with secure permissions
     try:

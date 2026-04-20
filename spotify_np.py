@@ -27,6 +27,7 @@ CONFIG_DIR = Path(hexchat.get_info("configdir")) / "addons"
 CONFIG_FILE = CONFIG_DIR / f"{PLUGIN_NAME}.conf"
 CALLBACK_PORT = 8888
 OAUTH_TIMEOUT = 120
+DEFAULT_REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}/callback"
 
 # Spotify API endpoints
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
@@ -156,6 +157,7 @@ class SpotifyAuth:
         self.client_id = client_id
         self.client_secret = client_secret
         self.config = config
+        self.redirect_uri: str = self.config.get('redirect_uri', DEFAULT_REDIRECT_URI)
         self.access_token: Optional[str] = self.config.get('access_token')
         self.refresh_token: Optional[str] = self.config.get('refresh_token')
         self.token_expiry: float = self.config.get('token_expiry', 0)
@@ -175,7 +177,7 @@ class SpotifyAuth:
         params = {
             'client_id': self.client_id,
             'response_type': 'code',
-            'redirect_uri': f'http://localhost:{CALLBACK_PORT}/callback',
+            'redirect_uri': self.redirect_uri,
             'scope': 'user-read-currently-playing',
             'state': self._oauth_state,
             'show_dialog': 'false'
@@ -266,7 +268,7 @@ class SpotifyAuth:
                 data={
                     'grant_type': 'authorization_code',
                     'code': code,
-                    'redirect_uri': f'http://localhost:{CALLBACK_PORT}/callback',
+                    'redirect_uri': self.redirect_uri,
                     'client_id': self.client_id,
                     'client_secret': self.client_secret
                 },
