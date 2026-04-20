@@ -7,8 +7,12 @@ import hexchat
 import requests
 import json
 import os
+import queue
+import secrets
+import stat
 import threading
 import time
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode, parse_qs
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -22,6 +26,7 @@ PLUGIN_NAME = "spotify_np"
 CONFIG_DIR = Path(hexchat.get_info("configdir")) / "addons"
 CONFIG_FILE = CONFIG_DIR / f"{PLUGIN_NAME}.conf"
 CALLBACK_PORT = 8888
+OAUTH_TIMEOUT = 120
 
 # Spotify API endpoints
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
