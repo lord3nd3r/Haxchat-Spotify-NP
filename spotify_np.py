@@ -198,12 +198,11 @@ class SpotifyAuth:
         """Start OAuth flow in browser (non-blocking)"""
         import webbrowser
         
-        # Check for HTTPS which won't work with our simple HTTP server
+        # HTTPS requires manual flow since we can't run an HTTPS server easily
         if self.redirect_uri.startswith('https://'):
-            hexchat.prnt("[NP] ERROR: HTTPS redirect URIs are not supported.")
-            hexchat.prnt("[NP] Please change your Spotify app's redirect URI to:")
-            hexchat.prnt("[NP]   http://localhost:8888/callback")
-            hexchat.prnt("[NP] Then run: /np redirect http://localhost:8888/callback")
+            hexchat.prnt("[NP] HTTPS redirect URI detected - using manual auth flow.")
+            hexchat.prnt("[NP] Run: /np url")
+            hexchat.prnt("[NP] Then follow the instructions to complete authentication.")
             return False
         
         hexchat.prnt("[NP] Opening Spotify login in your browser...")
