@@ -13,7 +13,7 @@ import stat
 import threading
 import time
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode, parse_qs
+from urllib.parse import urlencode, parse_qs, urlparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -166,6 +166,14 @@ class SpotifyAuth:
         self._oauth_start_time: float = 0
         self._poll_hook: Optional[Any] = None
     
+    def _get_port_from_uri(self) -> int:
+        """Extract port from redirect URI, default to 8888"""
+        try:
+            parsed = urlparse(self.redirect_uri)
+            return parsed.port or 8888
+        except Exception:
+            return 8888
+    
     def is_authenticated(self) -> bool:
         """Check if we have a valid access token"""
         return bool(self.access_token and time.time() < self.token_expiry)
@@ -210,12 +218,15 @@ class SpotifyAuth:
                 break
         
         # Try to start callback server
+        port = self._get_port_from_uri()
         try:
-            self._oauth_server = HTTPServer(('127.0.0.1', CALLBACK_PORT), OAuthCallbackHandler)
+            self._oauth_server = HTTPServer(('127.0.0.1', port), OAuthCallbackHandler)
             self._oauth_server.timeout = 1  # 1 second timeout for handle_request
         except OSError as e:
             if "Address already in use" in str(e):
-                hexchat.prnt(f"[NP] Port {CALLBACK_PORT} is in use. Close other applications using it.")
+                hexchat.prnt(f"[NP] Port {port} is in use. Try a different port:")
+                hexchat.prnt(f"[NP]   /np redirect http://localhost:9999/callback")
+                hexchat.prnt(f"[NP] (Also update Spotify app settings to match)")
             else:
                 hexchat.prnt(f"[NP] Cannot start callback server: {e}")
             return False
@@ -537,10 +548,60 @@ def cmd_np(word, word_eol, userdata) -> int:
                 hexchat.prnt("[NP] Example: /np redirect https://localhost:8888/callback")
             return hexchat.EAT_ALL
         
+        elif subcommand == "url":
+            # Show auth URL for manual authentication
+            auth_url = state.auth.get_auth_url()
+            hexchat.prnt("[NP] Manual authentication:")
+            hexchat.prnt("[NP] 1. Open this URL in your browser:")
+            hexchat.prnt(f"[NP]    {auth_url}")
+            hexchat.prnt("[NP] 2. Log in and authorize the app")
+            hexchat.prnt("[NP] 3. You'll be redirected to a URL (may show an error page)")
+            hexchat.prnt("[NP] 4. Copy the ENTIRE URL from your browser's address bar")
+            hexchat.prnt("[NP] 5. Run: /np code <paste_url_here>")
+            return hexchat.EAT_ALL
+        
+        elif subcommand == "code":
+            if len(word) > 2:
+                # User pasted either the full callback URL or just the code
+                input_str = word_eol[2].strip()
+                
+                # Extract code from URL if it's a URL
+                if input_str.startswith('http'):
+                    try:
+                        parsed = urlparse(input_str)
+                        params = parse_qs(parsed.query)
+                        if 'code' in params:
+                            code = params['code'][0]
+                            # Verify state if present
+                            if 'state' in params:
+                                received_state = params['state'][0]
+                                if state.auth._oauth_state and received_state != state.auth._oauth_state:
+                                    hexchat.prnt("[NP] Warning: State mismatch. Run /np url again and use the new URL.")
+                            if state.auth.exchange_code_for_token(code):
+                                hexchat.prnt("[NP] Authentication successful! Use /np to show what's playing.")
+                            return hexchat.EAT_ALL
+                        else:
+                            hexchat.prnt("[NP] No 'code' parameter found in URL")
+                            return hexchat.EAT_ALL
+                    except Exception as e:
+                        hexchat.prnt(f"[NP] Error parsing URL: {e}")
+                        return hexchat.EAT_ALL
+                else:
+                    # Assume it's just the code
+                    if state.auth.exchange_code_for_token(input_str):
+                        hexchat.prnt("[NP] Authentication successful! Use /np to show what's playing.")
+                    return hexchat.EAT_ALL
+            else:
+                hexchat.prnt("[NP] Usage: /np code <callback_url_or_code>")
+                hexchat.prnt("[NP] Paste the URL you were redirected to after authorizing")
+            return hexchat.EAT_ALL
+        
         elif subcommand == "help":
             hexchat.prnt("[NP] Spotify Now Playing Commands:")
             hexchat.prnt("  /np           - Show currently playing track")
-            hexchat.prnt("  /np auth      - Authenticate with Spotify")
+            hexchat.prnt("  /np auth      - Authenticate with Spotify (auto)")
+            hexchat.prnt("  /np url       - Get auth URL for manual login")
+            hexchat.prnt("  /np code <url> - Complete manual auth with callback URL")
             hexchat.prnt("  /np reset     - Clear stored credentials")
             hexchat.prnt("  /np status    - Show authentication status")
             hexchat.prnt("  /np redirect  - Show/set redirect URI")
@@ -595,10 +656,12 @@ hexchat.hook_command(
     "np",
     cmd_np,
     help="Usage: /np - Show currently playing Spotify track\n"
-         "       /np auth - Authenticate with Spotify\n"
+         "       /np auth - Authenticate with Spotify (auto)\n"
+         "       /np url - Get auth URL for manual login\n"
+         "       /np code <url> - Complete manual auth\n"
          "       /np reset - Clear stored credentials\n"
          "       /np status - Show authentication status\n"
-         "       /np redirect <uri> - Set redirect URI to match Spotify app\n"
+         "       /np redirect <uri> - Set redirect URI\n"
          "       /np help - Show help"
 )
 
