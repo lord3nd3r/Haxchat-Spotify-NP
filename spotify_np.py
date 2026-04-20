@@ -163,6 +163,8 @@ class SpotifyAuth:
         self.token_expiry: float = self.config.get('token_expiry', 0)
         self._oauth_state: Optional[str] = None
         self._oauth_server: Optional[HTTPServer] = None
+        self._oauth_start_time: float = 0
+        self._poll_hook: Optional[Any] = None
     
     def is_authenticated(self) -> bool:
         """Check if we have a valid access token"""
@@ -185,10 +187,20 @@ class SpotifyAuth:
         return f"{SPOTIFY_AUTH_URL}?{urlencode(params)}"
     
     def start_oauth_flow(self) -> bool:
-        """Start OAuth flow in browser with proper threading"""
+        """Start OAuth flow in browser (non-blocking)"""
         import webbrowser
         
+        # Check for HTTPS which won't work with our simple HTTP server
+        if self.redirect_uri.startswith('https://'):
+            hexchat.prnt("[NP] ERROR: HTTPS redirect URIs are not supported.")
+            hexchat.prnt("[NP] Please change your Spotify app's redirect URI to:")
+            hexchat.prnt("[NP]   http://localhost:8888/callback")
+            hexchat.prnt("[NP] Then run: /np redirect http://localhost:8888/callback")
+            return False
+        
         hexchat.prnt("[NP] Opening Spotify login in your browser...")
+        hexchat.prnt(f"[NP] Using redirect URI: {self.redirect_uri}")
+        hexchat.prnt("[NP] (This must match EXACTLY what's in your Spotify app settings)")
         
         # Clear any previous results from the queue
         while not OAuthCallbackHandler.result_queue.empty():
@@ -224,21 +236,35 @@ class SpotifyAuth:
             hexchat.prnt(f"[NP] Cannot open browser: {e}")
             hexchat.prnt(f"[NP] Please manually visit: {auth_url}")
         
-        # Wait for callback using thread-safe queue
+        # Start polling for result (non-blocking)
+        self._oauth_start_time = time.time()
+        self._poll_hook = hexchat.hook_timer(500, self._poll_oauth_result)
+        hexchat.prnt("[NP] Waiting for authentication... (complete login in browser)")
+        return True  # Started successfully, result will come later
+    
+    def _poll_oauth_result(self, userdata) -> int:
+        """Poll for OAuth result (called by timer)"""
+        # Check for timeout
+        if time.time() - self._oauth_start_time > OAUTH_TIMEOUT:
+            hexchat.prnt("[NP] Authentication timed out (no response within 2 minutes)")
+            self._cleanup_server()
+            return 0  # Stop timer
+        
+        # Check for result
         try:
-            result = OAuthCallbackHandler.result_queue.get(timeout=OAUTH_TIMEOUT)
+            result = OAuthCallbackHandler.result_queue.get_nowait()
             status, data = result
             
             if status == 'success':
-                return self.exchange_code_for_token(data)
+                if self.exchange_code_for_token(data):
+                    hexchat.prnt("[NP] Ready! Use /np to show what's playing.")
             else:
                 hexchat.prnt(f"[NP] Authentication failed: {data}")
-                return False
-        except queue.Empty:
-            hexchat.prnt("[NP] Authentication timed out (no response within 2 minutes)")
-            return False
-        finally:
+            
             self._cleanup_server()
+            return 0  # Stop timer
+        except queue.Empty:
+            return 1  # Continue polling
     
     def _run_server(self) -> None:
         """Run callback server until request received or shutdown"""
@@ -524,8 +550,8 @@ def cmd_np(word, word_eol, userdata) -> int:
     # Check authentication
     if not state.auth.is_authenticated():
         hexchat.prnt("[NP] Not authenticated. Starting login...")
-        if not state.auth.start_oauth_flow():
-            return hexchat.EAT_ALL
+        state.auth.start_oauth_flow()
+        return hexchat.EAT_ALL  # OAuth is async, wait for completion
     
     # Fetch and display currently playing
     track_data = state.np.get_currently_playing()
